@@ -25,7 +25,22 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+
     <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBJafyz-DNmqKZOP70LnmwTvdrGtBxxhag",
+            authDomain: "safestreet-25fbf.firebaseapp.com",
+            projectId: "safestreet-25fbf",
+            storageBucket: "safestreet-25fbf.firebasestorage.app",
+            messagingSenderId: "988938996308",
+            appId: "1:988938996308:web:6ccae7dd3c6cd90fb7bbc1"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
         const map = L.map('map', { zoomControl: true }).setView([20, 0], 2);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -125,6 +140,24 @@
 
         hazards.forEach(function (h) {
             L.marker(h, { icon: hazardIcon }).addTo(map).bindPopup("Official Hazard zone");
+        });
+
+        db.collection("hazards").onSnapshot((snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === "added") {
+                    const data = change.doc.data();
+
+                    // Check if the document has a 'location' field (GeoPoint)
+                    if (data.location && data.location.latitude) {
+                        const lat = data.location.latitude;
+                        const lng = data.location.longitude;
+
+                        // Add marker to map
+                        L.marker([lat, lng], { icon: userHazardIcon }).addTo(map)
+                            .bindPopup(`<b>${data.name || 'User Reported Hazard'}</b><br>${data.description || ''}`);
+                    }
+                }
+            });
         });
 
         // Function FlutterFlow can call
