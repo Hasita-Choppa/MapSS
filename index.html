@@ -34,11 +34,19 @@
         }).addTo(map);
 
         var hazardIcon = L.icon({
-            iconUrl: 'https://i.postimg.cc/nz4XMXSv/output-onlinepngtools.png', // <-- Replace with your hazard image URL
-            iconSize: [32, 32],       // width and height in pixels
-            iconAnchor: [16, 32],     // point of the icon corresponding to the marker's location
-            popupAnchor: [0, -32]     // where the popup opens relative to the icon
+            iconUrl: 'https://i.postimg.cc/nz4XMXSv/output-onlinepngtools.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
         });
+
+        var userHazardIcon = L.icon({
+            iconUrl: 'https://i.postimg.cc/RV97zKZL/output-onlinepngtools-(1).png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+        });
+
 
         // Pre-set hazards
         var hazards = [
@@ -116,12 +124,19 @@
         ];
 
         hazards.forEach(function (h) {
-            L.marker(h, { icon: hazardIcon }).addTo(map).bindPopup("Hazard zone");
+            L.marker(h, { icon: hazardIcon }).addTo(map).bindPopup("Official Hazard zone");
         });
 
         // Function FlutterFlow can call
-        function addHazard(lat, lng) {
-            L.marker([lat, lng], { icon: hazardIcon }).addTo(map).bindPopup("New hazard reported!");
+
+        function addHazard(lat, lng, isUserReported = true) {
+            const iconToUse = isUserReported ? userHazardIcon : hazardIcon;
+            const label = isUserReported ? "User Reported Hazard!" : "Official Hazard";
+
+            L.marker([lat, lng], { icon: iconToUse }).addTo(map).bindPopup(label);
+
+            // Optional: Pan the map to the new hazard
+            map.setView([lat, lng], 10);
         }
     </script>
 
