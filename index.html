@@ -2,8 +2,13 @@
 <html>
 
 <head>
-    <title>Market Simulator Map</title>
+    <title>Safety Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+
     <style>
         body {
             margin: 0;
@@ -22,13 +27,12 @@
 
     <div id="map"></div>
 
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 
     <script>
+        // --- FIREBASE CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyBJafyz-DNmqKZOP70LnmwTvdrGtBxxhag",
             authDomain: "safestreet-25fbf.firebaseapp.com",
@@ -41,13 +45,14 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
+        // --- INITIALIZE MAP ---
         const map = L.map('map', { zoomControl: true }).setView([20, 0], 2);
-
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors',
             maxZoom: 19
         }).addTo(map);
 
+        // --- ICONS ---
         var hazardIcon = L.icon({
             iconUrl: 'https://i.postimg.cc/nz4XMXSv/output-onlinepngtools.png',
             iconSize: [32, 32],
@@ -62,117 +67,190 @@
             popupAnchor: [0, -32]
         });
 
-
-        // Pre-set hazards
-        var hazards = [
-            [34.0522, -118.2437],
-            [51.5074, -0.1278],
-            [35.6895, 139.6917],
-            [40.7128, -74.0060],
-            [19.4326, -99.1332],
-            [-33.8688, 151.2093],
-            [48.8566, 2.3522],
-            [55.7558, 37.6173],
-            [28.6139, 77.2090],
-            [1.3521, 103.8198],
-            [39.9042, 116.4074],
-            [30.0444, 31.2357],
-            [-23.5505, -46.6333],
-            [43.6532, -79.3832],
-            [52.5200, 13.4050],
-            [41.9028, 12.4964],
-            [33.8688, 35.5018],
-            [-26.2041, 28.0473],
-            [35.9078, 127.7669],
-            [40.4168, -3.7038],
-            [37.9838, 23.7275],
-            [31.2304, 121.4737],
-            [45.4642, 9.1900],
-            [41.3851, 2.1734],
-            [50.8503, 4.3517],
-            [59.3293, 18.0686],
-            [35.6762, 139.6503],
-            [43.7711, 11.2486],
-            [25.276987, 55.296249],
-            [19.0760, 72.8777],
-            [-34.6037, -58.3816],
-            [-22.9068, -43.1729],
-            [6.5244, 3.3792],
-            [30.0330, 31.2336],
-            [13.7563, 100.5018],
-            [50.0755, 14.4378],
-            [60.1699, 24.9384],
-            [48.2082, 16.3738],
-            [55.9533, -3.1883],
-            [51.1657, 10.4515],
-            [37.5665, 126.9780],
-            [35.9078, 128.7669],
-            [32.7767, -96.7970],
-            [36.1699, -115.1398],
-            [39.7392, -104.9903],
-            [29.7604, -95.3698],
-            [33.4484, -112.0740],
-            [38.9072, -77.0369],
-            [42.3601, -71.0589],
-            [41.8781, -87.6298],
-            [43.6532, -79.3832],
-            [45.5017, -73.5673],
-            [49.2827, -123.1207],
-            [53.3498, -6.2603],
-            [55.9533, -3.1883],
-            [51.4545, -2.5879],
-            [52.4862, -1.8904],
-            [50.1109, 8.6821],
-            [48.1351, 11.5820],
-            [52.2297, 21.0122],
-            [41.0082, 28.9784],
-            [39.9334, 32.8597],
-            [36.7202, -4.4203],
-            [40.4168, -3.7038],
-            [50.4501, 30.5234],
-            [48.3794, 31.1656],
-            [59.4370, 24.7536],
-            [56.9496, 24.1052],
-            [55.6761, 12.5683],
-            [60.4720, 8.4689],
-            [61.5240, 105.3188]
+        // --- STATIC HAZARDS ---
+        var staticHazards = [
+            [34.0522, -118.2437], [51.5074, -0.1278], [35.6895, 139.6917], [40.7128, -74.0060],
+            [19.4326, -99.1332], [-33.8688, 151.2093], [48.8566, 2.3522], [55.7558, 37.6173],
+            [28.6139, 77.2090], [1.3521, 103.8198], [39.9042, 116.4074], [30.0444, 31.2357],
+            [-23.5505, -46.6333], [43.6532, -79.3832], [52.5200, 13.4050], [41.9028, 12.4964],
+            [33.8688, 35.5018], [-26.2041, 28.0473], [35.9078, 127.7669], [40.4168, -3.7038],
+            [37.9838, 23.7275], [31.2304, 121.4737], [45.4642, 9.1900], [41.3851, 2.1734],
+            [50.8503, 4.3517], [59.3293, 18.0686], [35.6762, 139.6503], [43.7711, 11.2486],
+            [25.2769, 55.2962], [19.0760, 72.8777], [-34.6037, -58.3816], [-22.9068, -43.1729],
+            [6.5244, 3.3792], [30.0330, 31.2336], [13.7563, 100.5018], [50.0755, 14.4378],
+            [60.1699, 24.9384], [48.2082, 16.3738], [55.9533, -3.1883], [51.1657, 10.4515],
+            [37.5665, 126.9780], [35.9078, 128.7669], [32.7767, -96.7970], [36.1699, -115.1398],
+            [39.7392, -104.9903], [29.7604, -95.3698], [33.4484, -112.0740], [38.9072, -77.0369],
+            [42.3601, -71.0589], [41.8781, -87.6298], [43.6532, -79.3832], [45.5017, -73.5673],
+            [49.2827, -123.1207], [53.3498, -6.2603], [55.9533, -3.1883], [51.4545, -2.5879],
+            [52.4862, -1.8904], [50.1109, 8.6821], [48.1351, 11.5820], [52.2297, 21.0122],
+            [41.0082, 28.9784], [39.9334, 32.8597], [36.7202, -4.4203], [40.4168, -3.7038],
+            [50.4501, 30.5234], [48.3794, 31.1656], [59.4370, 24.7536], [56.9496, 24.1052],
+            [55.6761, 12.5683], [60.4720, 8.4689], [61.5240, 105.3188]
         ];
 
-        hazards.forEach(function (h) {
+        staticHazards.forEach(function (h) {
             L.marker(h, { icon: hazardIcon }).addTo(map).bindPopup("Official Hazard zone");
         });
 
-        db.collection("hazards").onSnapshot((snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-                if (change.type === "added") {
-                    const data = change.doc.data();
+        let hazardMarkers = {};
 
-                    // Check if the document has a 'location' field (GeoPoint)
-                    if (data.location && data.location.latitude) {
-                        const lat = data.location.latitude;
-                        const lng = data.location.longitude;
-
-                        // Add marker to map
-                        L.marker([lat, lng], { icon: userHazardIcon }).addTo(map)
-                            .bindPopup(`<b>${data.name || 'User Reported Hazard'}</b><br>${data.description || ''}`);
-                    }
-                }
-            });
-        });
-
-        // Function FlutterFlow can call
-
-        function addHazard(lat, lng, isUserReported = true) {
-            const iconToUse = isUserReported ? userHazardIcon : hazardIcon;
-            const label = isUserReported ? "User Reported Hazard!" : "Official Hazard";
-
-            L.marker([lat, lng], { icon: iconToUse }).addTo(map).bindPopup(label);
-
-            // Optional: Pan the map to the new hazard
-            map.setView([lat, lng], 10);
+        /* ---------------- UTIL ---------------- */
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
         }
-    </script>
 
+        function normalizeLocation(location) {
+            if (!location) return null;
+
+            // [lat, lng]
+            if (Array.isArray(location) && location.length === 2) {
+                const a = Number(location[0]);
+                const b = Number(location[1]);
+
+                if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return [a, b];
+                return [b, a];
+            }
+
+            // {lat, lng}
+            if (location.lat != null && location.lng != null) {
+                return [Number(location.lat), Number(location.lng)];
+            }
+
+            // GeoPoint
+            if (location._lat != null && location._long != null) {
+                return [Number(location._lat), Number(location._long)];
+            }
+
+            return null;
+        }
+
+        /* ---------------- REVERSE GEOCODE ---------------- */
+        async function reverseGeocode(location, docId) {
+            try {
+                const [lat, lng] = normalizeLocation(location);
+
+                const res = await fetch(
+                    `https://us1.locationiq.com/v1/reverse.php?key=pk.8c0002d5e4d865cd206c0f2cf1bcbdaa&lat=${lat}&lon=${lng}&format=json`
+                );
+
+                const data = await res.json();
+                if (!data?.display_name) return;
+
+                const address = data.display_name;
+
+                // IMPORTANT: store ONLY location (no lat/lng split fields)
+                await db.collection("hazards").doc(docId).update({
+                    location: [lat, lng],
+                    address
+                });
+
+            } catch (err) {
+                console.error("Reverse geocode error:", err);
+            }
+        }
+
+        /* ---------------- FORWARD GEOCODE ---------------- */
+        async function geocodeAddress(address, docId) {
+            try {
+                const res = await fetch(
+                    `https://us1.locationiq.com/v1/search.php?key=pk.8c0002d5e4d865cd206c0f2cf1bcbdaa&q=${encodeURIComponent(address)}&format=json`
+                );
+
+                const data = await res.json();
+
+                console.log("GEOCODE RAW RESPONSE:", data);
+
+                if (!Array.isArray(data) || data.length === 0) {
+                    console.warn("No geocode results for:", address);
+                    return;
+                }
+
+                const first = data[0];
+
+                if (!first.lat || !first.lon) {
+                    console.warn("Invalid geocode result:", first);
+                    return;
+                }
+
+                const lat = Number(first.lat);
+                const lng = Number(first.lon);
+
+                if (isNaN(lat) || isNaN(lng)) {
+                    console.warn("NaN coordinates:", lat, lng);
+                    return;
+                }
+
+                const location = [lat, lng];
+
+                console.log("FINAL LOCATION:", location);
+
+                await db.collection("hazards").doc(docId).update({
+                    location,
+                    address
+                });
+
+            } catch (err) {
+                console.error("Geocode error:", err);
+            }
+        }
+
+        /* ---------------- QUEUE ---------------- */
+        async function processGeocodingQueue(docs) {
+            for (const item of docs) {
+                const data = item.data;
+
+                const location = data.location;
+
+                const hasLocation =
+                    Array.isArray(location) && location.length === 2;
+
+                const hasAddress =
+                    data.address && data.address.trim() !== "";
+
+                if (hasLocation && !hasAddress) {
+                    await sleep(800);
+                    await reverseGeocode(location, item.id);
+                }
+            }
+        }
+
+        /* ---------------- FIRESTORE LISTENER ---------------- */
+        db.collection("hazards").onSnapshot(async (snapshot) => {
+
+            const docs = [];
+
+            snapshot.forEach(doc => {
+                docs.push({ id: doc.id, data: doc.data() });
+            });
+
+            // clear markers
+            Object.values(hazardMarkers).forEach(m => map.removeLayer(m));
+            hazardMarkers = {};
+
+            // render markers
+            for (const item of docs) {
+                const d = item.data;
+
+                const location = normalizeLocation(d.location);
+                if (!location) continue;
+
+                const marker = L.marker(location, {
+                    icon: userHazardIcon
+                })
+                    .addTo(map)
+                    .bindPopup(`
+                    <b>User Hazard</b><br>
+                    ${d.address || "No address"}
+                `);
+
+                hazardMarkers[item.id] = marker;
+            }
+
+            // fill missing addresses
+            await processGeocodingQueue(docs);
+        });
+    </script>
 </body>
 
 </html>
