@@ -140,10 +140,10 @@
                 const address = data.display_name;
 
                 // IMPORTANT: store ONLY location (no lat/lng split fields)
-                await db.collection("hazards").doc(docId).update({
-                    location: [lat, lng],
-                    address
-                });
+                await db.collection("hazards").doc(docId).set({
+                    location: location,
+                    address: address,
+                }, { merge: true });
 
             } catch (err) {
                 console.error("Reverse geocode error:", err);
@@ -206,7 +206,9 @@
                     Array.isArray(location) && location.length === 2;
 
                 const hasAddress =
-                    data.address && data.address.trim() !== "";
+                    data.address &&
+                    data.address.trim() !== "" &&
+                    !data.address.includes("User Hazard"); // 🔥 FIX
 
                 if (hasLocation && !hasAddress) {
                     await sleep(800);
@@ -240,8 +242,7 @@
                 })
                     .addTo(map)
                     .bindPopup(`
-                    <b>User Hazard</b><br>
-                    ${d.address || "No address"}
+                    User Hazard
                 `);
 
                 hazardMarkers[item.id] = marker;
