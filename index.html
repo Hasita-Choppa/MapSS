@@ -20,12 +20,102 @@
             height: 100vh;
             width: 100vw;
         }
+
+        /* ---- ROUTE PANEL ---- */
+        #route-panel {
+            display: none;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            max-height: 38vh;
+            overflow-y: auto;
+            background: #1e293b;
+            color: #f1f5f9;
+            z-index: 1000;
+            border-top: 2px solid #334155;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+        }
+
+        .route-summary {
+            display: flex;
+            gap: 16px;
+            padding: 10px 14px 6px;
+            font-size: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #334155;
+        }
+
+        .route-warning {
+            padding: 6px 14px;
+            background: #7c2d12;
+            color: #fed7aa;
+            font-size: 12px;
+        }
+
+        .route-safe {
+            padding: 6px 14px;
+            background: #14532d;
+            color: #bbf7d0;
+            font-size: 12px;
+        }
+
+        .route-loading {
+            padding: 14px;
+            text-align: center;
+            color: #94a3b8;
+        }
+
+        .route-error {
+            padding: 14px;
+            text-align: center;
+            color: #f87171;
+        }
+
+        .route-steps {
+            padding: 6px 0 12px;
+        }
+
+        .route-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 6px 14px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .step-num {
+            background: #3b82f6;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            min-width: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .step-text {
+            flex: 1;
+            line-height: 1.4;
+        }
+
+        .step-dist {
+            color: #94a3b8;
+            font-size: 11px;
+            white-space: nowrap;
+        }
     </style>
 </head>
 
 <body>
 
     <div id="map"></div>
+    <div id="route-panel"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
@@ -241,15 +331,251 @@
     </script>
 
     //ROUTING
+    <!-- ROUTING SCRIPT — replace your existing //ROUTING script tag with this -->
     <script>
-        window.addEventListener("message", async (event) => {
-            console.log("🔥 MESSAGE RECEIVED FROM FLUTTERFLOW:", event.data);
-            //const data = event.data;
+        /* ============================================================
+        SAFE WALK ROUTING
+        Reads URL params on load:
+            ?startLat=&startLng=        ← GPS mode
+            ?startAddress=              ← manual address mode
+            ?endAddress=                ← always required
+        ============================================================ */
 
-            //if (!data || data.type !== "ROUTE_REQUEST") return;
+        const ROUTING_API_KEY = "pk.8c0002d5e4d865cd206c0f2cf1bcbdaa";
+        const HAZARD_RADIUS_M = 350; // ~350m buffer around each hazard
 
-            //await handleRoute(data);
-        });
+        // --- Haversine distance in meters between two [lat,lng] points ---
+        function distanceMeters([lat1, lng1], [lat2, lng2]) {
+            const R = 6371000;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a =
+                Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) *
+                Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        // --- Collect all hazard coords (static + live Firestore) ---
+        function getAllHazardCoords() {
+            const coords = [];
+
+            // Static hazards (already defined above in the HAZARDS script)
+            staticHazards.forEach(h => coords.push(h));
+
+            // Live user-reported hazards (from the hazardMarkers already on map)
+            Object.values(hazardMarkers).forEach(marker => {
+                const ll = marker.getLatLng();
+                coords.push([ll.lat, ll.lng]);
+            });
+
+            return coords;
+        }
+
+        // --- Check if a decoded route geometry passes too close to any hazard ---
+        function routePassesNearHazard(coordsArray, hazards) {
+            for (const point of coordsArray) {
+                for (const hazard of hazards) {
+                    if (distanceMeters(point, hazard) < HAZARD_RADIUS_M) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // --- Decode LocationIQ/OSRM polyline (encoded polyline6 format) ---
+        function decodePolyline(encoded, precision = 6) {
+            const factor = Math.pow(10, precision);
+            const coords = [];
+            let index = 0, lat = 0, lng = 0;
+            while (index < encoded.length) {
+                let b, shift = 0, result = 0;
+                do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+                lat += (result & 1) ? ~(result >> 1) : result >> 1;
+                shift = 0; result = 0;
+                do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+                lng += (result & 1) ? ~(result >> 1) : result >> 1;
+                coords.push([lat / factor, lng / factor]);
+            }
+            return coords;
+        }
+
+        // --- Geocode an address string → {lat, lng} ---
+        async function geocodeAddress(address) {
+            const res = await fetch(
+                `https://us1.locationiq.com/v1/search.php?key=${ROUTING_API_KEY}&q=${encodeURIComponent(address)}&format=json`
+            );
+            const data = await res.json();
+            if (!Array.isArray(data) || data.length === 0) throw new Error("No geocode result for: " + address);
+            return { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+        }
+
+        // --- Fetch a route from LocationIQ Directions API ---
+        // waypoints: array of {lat, lng} — start, optional intermediates, end
+        async function fetchRoute(waypoints) {
+            const coords = waypoints.map(p => `${p.lng},${p.lat}`).join(";");
+            const url = `https://us1.locationiq.com/v1/directions/driving/${coords}?key=${ROUTING_API_KEY}&steps=true&alternatives=true&geometries=polyline6&overview=full`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (!data.routes || data.routes.length === 0) throw new Error("No routes returned");
+            return data.routes; // array of route alternatives
+        }
+
+        // --- Build waypoints that detour around hazards ---
+        // Strategy: try alternatives first, then inject a midpoint detour if all pass near hazards
+        async function getSafeRoute(start, end, hazards) {
+            const routes = await fetchRoute([start, end]);
+
+            // 1. Try each alternative — return the first that avoids hazards
+            for (const route of routes) {
+                const coords = decodePolyline(route.geometry);
+                if (!routePassesNearHazard(coords, hazards)) {
+                    return { route, coords, isDetoured: false };
+                }
+            }
+
+            // 2. All alternatives pass near hazards — inject a perpendicular midpoint detour
+            const midLat = (start.lat + end.lat) / 2;
+            const midLng = (start.lng + end.lng) / 2;
+
+            // Offset perpendicularly (~0.005 degrees ≈ 500m)
+            const dLat = end.lat - start.lat;
+            const dLng = end.lng - start.lng;
+            const len = Math.sqrt(dLat * dLat + dLng * dLng);
+            const perpLat = midLat + (dLng / len) * 0.005;
+            const perpLng = midLng - (dLat / len) * 0.005;
+
+            try {
+                const detourRoutes = await fetchRoute([start, { lat: perpLat, lng: perpLng }, end]);
+                const best = detourRoutes[0];
+                const coords = decodePolyline(best.geometry);
+                return { route: best, coords, isDetoured: true };
+            } catch {
+                // Fallback: return the least-bad original route
+                const fallback = routes[0];
+                return { route: fallback, coords: decodePolyline(fallback.geometry), isDetoured: false };
+            }
+        }
+
+        // --- Draw the route on the map ---
+        let routeLayer = null;
+        let routeMarkers = [];
+
+        function clearRoute() {
+            if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+            routeMarkers.forEach(m => map.removeLayer(m));
+            routeMarkers = [];
+            const panel = document.getElementById("route-panel");
+            if (panel) panel.innerHTML = "";
+        }
+
+        function drawRoute(coords, route, start, end, isDetoured) {
+            clearRoute();
+
+            // Draw polyline
+            routeLayer = L.polyline(coords, {
+                color: isDetoured ? "#f97316" : "#3b82f6",
+                weight: 5,
+                opacity: 0.85
+            }).addTo(map);
+
+            // Start & end markers
+            const startMarker = L.marker([start.lat, start.lng])
+                .addTo(map)
+                .bindPopup("<b>Start</b>")
+                .openPopup();
+            const endMarker = L.marker([end.lat, end.lng])
+                .addTo(map)
+                .bindPopup("<b>Destination</b>");
+            routeMarkers.push(startMarker, endMarker);
+
+            // Fit map to route with padding
+            map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+
+            // Build turn-by-turn panel
+            const panel = document.getElementById("route-panel");
+            if (!panel) return;
+
+            const legs = route.legs || [];
+            const steps = legs.flatMap(leg => leg.steps || []);
+
+            const distKm = (route.distance / 1000).toFixed(1);
+            const durMin = Math.round(route.duration / 60);
+
+            const warningHtml = isDetoured
+                ? `<div class="route-warning">⚠️ Route adjusted to avoid hazard zones</div>`
+                : `<div class="route-safe">✅ Route avoids all known hazard zones</div>`;
+
+            panel.innerHTML = `
+                <div class="route-summary">
+                    <span>🚶 ${distKm} km</span>
+                    <span>⏱ ${durMin} min</span>
+                </div>
+                ${warningHtml}
+                <div class="route-steps">
+                    ${steps.map((step, i) => `
+                        <div class="route-step">
+                            <span class="step-num">${i + 1}</span>
+                            <span class="step-text">${step.maneuver?.instruction || step.name || "Continue"}</span>
+                            <span class="step-dist">${(step.distance).toFixed(0)}m</span>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+            panel.style.display = "block";
+        }
+
+        // --- Main entry point: reads URL params and kicks off routing ---
+        async function initRouting() {
+            const params = new URLSearchParams(window.location.search);
+
+            const startLat = params.get("startLat");
+            const startLng = params.get("startLng");
+            const startAddress = params.get("startAddress");
+            const endAddress = params.get("endAddress");
+
+            // Only run routing if routing params are present
+            const hasStart = (startLat && startLng) || startAddress;
+            const hasEnd = !!endAddress;
+            if (!hasStart || !hasEnd) return;
+
+            const panel = document.getElementById("route-panel");
+            if (panel) {
+                panel.style.display = "block";
+                panel.innerHTML = `<div class="route-loading">🔍 Finding safest route...</div>`;
+            }
+
+            try {
+                // Resolve start
+                let start;
+                if (startLat && startLng) {
+                    start = { lat: Number(startLat), lng: Number(startLng) };
+                } else {
+                    start = await geocodeAddress(startAddress);
+                }
+
+                // Resolve end
+                const end = await geocodeAddress(endAddress);
+
+                // Get hazards (wait a moment for Firestore markers to load)
+                await new Promise(r => setTimeout(r, 1200));
+                const hazards = getAllHazardCoords();
+
+                // Get safe route
+                const { route, coords, isDetoured } = await getSafeRoute(start, end, hazards);
+
+                drawRoute(coords, route, start, end, isDetoured);
+
+            } catch (err) {
+                console.error("Routing failed:", err);
+                if (panel) panel.innerHTML = `<div class="route-error">❌ Could not find a route. Check the addresses and try again.</div>`;
+            }
+        }
+
+        // Wait for Firestore listener to attach, then run routing
+        window.addEventListener("load", () => setTimeout(initRouting, 500));
     </script>
 </body>
 
