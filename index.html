@@ -31,6 +31,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 
+
+    // HAZARDS
     <script>
         // --- FIREBASE CONFIG ---
         const firebaseConfig = {
@@ -93,163 +95,157 @@
             L.marker(h, { icon: hazardIcon }).addTo(map).bindPopup("Official Hazard zone");
         });
 
-        let hazardMarkers = {};
 
-        /* ---------------- UTIL ---------------- */
+        // --- FIREBASE & MAP INIT (keep your existing code above this) ---
+
+        /* ---- SENTINEL VALUES ---- */
+        const REVERSE_SENTINEL = "Reverse it";
+        const FORWARD_SENTINEL_LAT = 0;
+        const FORWARD_SENTINEL_LNG = 0;
+        const API_KEY = "pk.8c0002d5e4d865cd206c0f2cf1bcbdaa";
+
+        /* ---- UTILS ---- */
         function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
         function normalizeLocation(location) {
             if (!location) return null;
-
-            // [lat, lng]
             if (Array.isArray(location) && location.length === 2) {
-                const a = Number(location[0]);
-                const b = Number(location[1]);
-
-                if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return [a, b];
-                return [b, a];
+                const lat = Number(location[0]);
+                const lng = Number(location[1]);
+                return isNaN(lat) || isNaN(lng) ? null : [lat, lng];
             }
-
-            // {lat, lng}
-            if (location.lat != null && location.lng != null) {
-                return [Number(location.lat), Number(location.lng)];
+            if (typeof location === "object") {
+                // Firestore GeoPoint
+                if (typeof location._lat === "number" && typeof location._long === "number")
+                    return [location._lat, location._long];
+                if (typeof location.lat === "number" && typeof location.lng === "number")
+                    return [location.lat, location.lng];
             }
-
-            // GeoPoint
-            if (location._lat != null && location._long != null) {
-                return [Number(location._lat), Number(location._long)];
-            }
-
             return null;
         }
 
-        /* ---------------- REVERSE GEOCODE ---------------- */
-        async function reverseGeocode(location, docId) {
-            try {
-                const [lat, lng] = normalizeLocation(location);
-
-                const res = await fetch(
-                    `https://us1.locationiq.com/v1/reverse.php?key=pk.8c0002d5e4d865cd206c0f2cf1bcbdaa&lat=${lat}&lon=${lng}&format=json`
-                );
-
-                const data = await res.json();
-                if (!data?.display_name) return;
-
-                const address = data.display_name;
-
-                // IMPORTANT: store ONLY location (no lat/lng split fields)
-                await db.collection("hazards").doc(docId).set({
-                    location: location,
-                    address: address,
-                }, { merge: true });
-
-            } catch (err) {
-                console.error("Reverse geocode error:", err);
-            }
+        function needsReverseGeocode(data) {
+            // Has real coordinates + address is the sentinel = came from "use current location"
+            const loc = normalizeLocation(data.location);
+            if (!loc) return false;
+            const isRealCoord = !(loc[0] === FORWARD_SENTINEL_LAT && loc[1] === FORWARD_SENTINEL_LNG);
+            const addressIsSentinel = !data.address || data.address.trim() === REVERSE_SENTINEL;
+            return isRealCoord && addressIsSentinel;
         }
 
-        /* ---------------- FORWARD GEOCODE ---------------- */
-        async function geocodeAddress(address, docId) {
+        function needsForwardGeocode(data) {
+            // Has a real address string + location is the sentinel [0, 0] = came from manual entry
+            const address = data.address?.trim();
+            if (!address || address === REVERSE_SENTINEL) return false;
+            const loc = normalizeLocation(data.location);
+            const locationIsSentinel = !loc || (loc[0] === FORWARD_SENTINEL_LAT && loc[1] === FORWARD_SENTINEL_LNG);
+            return locationIsSentinel;
+        }
+
+        /* ---- REVERSE GEOCODE: coords → address ---- */
+        async function reverseGeocode(docId, lat, lng) {
             try {
                 const res = await fetch(
-                    `https://us1.locationiq.com/v1/search.php?key=pk.8c0002d5e4d865cd206c0f2cf1bcbdaa&q=${encodeURIComponent(address)}&format=json`
+                    `https://us1.locationiq.com/v1/reverse.php?key=${API_KEY}&lat=${lat}&lon=${lng}&format=json`
                 );
-
                 const data = await res.json();
-
-                console.log("GEOCODE RAW RESPONSE:", data);
-
-                if (!Array.isArray(data) || data.length === 0) {
-                    console.warn("No geocode results for:", address);
+                if (!data?.display_name) {
+                    console.warn("No display_name in reverse geocode response", data);
                     return;
                 }
-
-                const first = data[0];
-
-                if (!first.lat || !first.lon) {
-                    console.warn("Invalid geocode result:", first);
-                    return;
-                }
-
-                const lat = Number(first.lat);
-                const lng = Number(first.lon);
-
-                if (isNaN(lat) || isNaN(lng)) {
-                    console.warn("NaN coordinates:", lat, lng);
-                    return;
-                }
-
-                const location = [lat, lng];
-
-                console.log("FINAL LOCATION:", location);
-
+                // ONLY update the address field — never touch location
                 await db.collection("hazards").doc(docId).update({
-                    location,
-                    address
+                    address: data.display_name
                 });
-
+                console.log(`[${docId}] Reverse geocoded → ${data.display_name}`);
             } catch (err) {
-                console.error("Geocode error:", err);
+                console.error(`[${docId}] Reverse geocode failed:`, err);
             }
         }
 
-        /* ---------------- QUEUE ---------------- */
-        async function processGeocodingQueue(docs) {
-            for (const item of docs) {
-                const data = item.data;
+        /* ---- FORWARD GEOCODE: address → coords ---- */
+        async function forwardGeocode(docId, address) {
+            try {
+                const res = await fetch(
+                    `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(address)}&format=json`
+                );
+                const data = await res.json();
+                if (!Array.isArray(data) || data.length === 0) {
+                    console.warn(`[${docId}] No results for address: ${address}`);
+                    return;
+                }
+                const lat = Number(data[0].lat);
+                const lng = Number(data[0].lon);
+                if (isNaN(lat) || isNaN(lng)) {
+                    console.warn(`[${docId}] Invalid coordinates in response`);
+                    return;
+                }
+                // ONLY update the location field — never touch address
+                await db.collection("hazards").doc(docId).update({
+                    location: [lat, lng]
+                });
+                console.log(`[${docId}] Forward geocoded → [${lat}, ${lng}]`);
+            } catch (err) {
+                console.error(`[${docId}] Forward geocode failed:`, err);
+            }
+        }
 
-                const location = data.location;
+        /* ---- PROCESS QUEUE ---- */
+        let queueRunning = false;
 
-                const hasLocation =
-                    Array.isArray(location) && location.length === 2;
-
-                const hasAddress =
-                    data.address &&
-                    data.address.trim() !== "" &&
-                    !data.address.includes("User Hazard"); // 🔥 FIX
-
-                if (hasLocation && !hasAddress) {
+        async function processQueue(docs) {
+            for (const { id, data } of docs) {
+                if (needsReverseGeocode(data)) {
+                    const [lat, lng] = normalizeLocation(data.location);
                     await sleep(800);
-                    await reverseGeocode(location, item.id);
+                    await reverseGeocode(id, lat, lng);
+                } else if (needsForwardGeocode(data)) {
+                    await sleep(800);
+                    await forwardGeocode(id, data.address.trim());
                 }
             }
         }
 
-        /* ---------------- FIRESTORE LISTENER ---------------- */
+        /* ---- FIRESTORE LISTENER ---- */
+        let hazardMarkers = {};
+
         db.collection("hazards").onSnapshot(async (snapshot) => {
-
             const docs = [];
+            snapshot.forEach(doc => docs.push({ id: doc.id, data: doc.data() }));
 
-            snapshot.forEach(doc => {
-                docs.push({ id: doc.id, data: doc.data() });
-            });
-
-            // clear markers
+            // Rebuild markers
             Object.values(hazardMarkers).forEach(m => map.removeLayer(m));
             hazardMarkers = {};
 
-            // render markers
-            for (const item of docs) {
-                const d = item.data;
+            for (const { id, data } of docs) {
+                const loc = normalizeLocation(data.location);
+                if (!loc) continue;
+                // Don't render the sentinel [0,0] placeholder
+                if (loc[0] === 0 && loc[1] === 0) continue;
 
-                const location = normalizeLocation(d.location);
-                if (!location) continue;
-
-                const marker = L.marker(location, {
-                    icon: userHazardIcon
-                })
+                hazardMarkers[id] = L.marker(loc, { icon: userHazardIcon })
                     .addTo(map)
-                    .bindPopup(`
-                    User Hazard
-                `);
-
-                hazardMarkers[item.id] = marker;
+                    .bindPopup(`<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL ? '<br>' + data.address : ''}`);
             }
 
-            // fill missing addresses
-            await processGeocodingQueue(docs);
+            if (queueRunning) return;
+            queueRunning = true;
+            try {
+                await processQueue(docs);
+            } finally {
+                queueRunning = false;
+            }
+        });
+    </script>
+
+    //ROUTING
+    <script>
+        window.addEventListener("message", function (event) {
+            const data = event.data;
+
+            console.log("Received from FlutterFlow:", data);
         });
     </script>
 </body>
