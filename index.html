@@ -242,10 +242,8 @@
 
     //ROUTING
     <script>
-        window.addEventListener("message", function (event) {
-            const data = event.data;
-
-            console.log("Received from FlutterFlow:", data);
+        window.addEventListener("message", (event) => {
+            console.log("MESSAGE RECEIVED:", event.data);
         });
     </script>
 </body>
