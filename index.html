@@ -242,8 +242,13 @@
 
     //ROUTING
     <script>
-        window.addEventListener("message", (event) => {
-            console.log("MESSAGE RECEIVED:", event.data);
+        window.addEventListener("message", async (event) => {
+            console.log("🔥 MESSAGE RECEIVED FROM FLUTTERFLOW:", event.data);
+            //const data = event.data;
+
+            //if (!data || data.type !== "ROUTE_REQUEST") return;
+
+            //await handleRoute(data);
         });
     </script>
 </body>
