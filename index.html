@@ -631,7 +631,7 @@
 
                 const end = await geocodeAddress(endAddress);
 
-                await new Promise(r => setTimeout(r, 1200));
+                await new Promise(r => setTimeout(r, 2500));
                 const hazards = getAllHazardCoords();
 
                 const { route, coords, isDetoured } = await getSafeRoute(start, end, hazards);
