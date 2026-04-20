@@ -20,7 +20,6 @@
             width: 100vw;
         }
 
-        /* ---- ROUTE PANEL ---- */
         #route-panel {
             display: none;
             position: absolute;
@@ -109,7 +108,6 @@
             white-space: nowrap;
         }
 
-        /* ---- SOS PANEL ---- */
         #sos-panel {
             display: none;
             position: absolute;
@@ -124,6 +122,7 @@
             font-size: 14px;
             font-weight: bold;
             text-align: center;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -162,8 +161,6 @@
 
         /* ================================================================
            MAP INIT
-           Always starts at world view [20, 0] zoom 2.
-           Only zooms in when routing params are present.
         ================================================================ */
         const map = L.map('map', {
             zoomControl: true,
@@ -334,6 +331,8 @@
 
         /* ================================================================
            FIRESTORE LISTENER
+           Uses docChanges() so markers never flash —
+           only adds/removes markers when documents actually change.
         ================================================================ */
         let hazardMarkers = {};
         let queueRunning = false;
@@ -341,8 +340,8 @@
         db.collection("hazards").onSnapshot(async (snapshot) => {
             const docs = [];
             snapshot.forEach(doc => docs.push({ id: doc.id, data: doc.data() }));
-        
-            // Only process documents that actually changed — don't clear all markers
+
+            // Only remove markers for deleted documents
             snapshot.docChanges().forEach(change => {
                 if (change.type === "removed") {
                     if (hazardMarkers[change.doc.id]) {
@@ -351,29 +350,27 @@
                     }
                 }
             });
-        
+
+            // Add new markers / update existing popup content
             for (const { id, data } of docs) {
                 const loc = normalizeLocation(data.location);
                 if (!loc) continue;
                 if (loc[0] === 0 && loc[1] === 0) continue;
-        
-                // Only add marker if it doesn't already exist on the map
+
+                const popupContent = `<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL
+                    ? '<br>' + data.address : ''}`;
+
                 if (!hazardMarkers[id]) {
+                    // New marker — add it
                     hazardMarkers[id] = L.marker(loc, { icon: userHazardIcon })
                         .addTo(map)
-                        .bindPopup(
-                            `<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL
-                                ? '<br>' + data.address : ''}`
-                        );
+                        .bindPopup(popupContent);
                 } else {
-                    // Update popup if address changed
-                    hazardMarkers[id].setPopupContent(
-                        `<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL
-                            ? '<br>' + data.address : ''}`
-                    );
+                    // Existing marker — just update popup (no flash)
+                    hazardMarkers[id].setPopupContent(popupContent);
                 }
             }
-        
+
             if (queueRunning) return;
             queueRunning = true;
             try {
@@ -385,8 +382,8 @@
 
         /* ================================================================
            SOS EMAIL HANDLER
-           Triggered when URL has ?endLat=&endLng=&sender=&emails=
-           Sends an email to each comma-separated email in the emails param
+           Fires when URL has ?endLat=&endLng=&sender=&emails=
+           Sends EmailJS email to each comma-separated address.
         ================================================================ */
         async function sendSOSEmails() {
             const params = new URLSearchParams(window.location.search);
@@ -395,7 +392,6 @@
             const sender = params.get("sender");
             const emails = params.get("emails");
 
-            // Only run if this is an SOS link (has emails param)
             if (!endLat || !endLng || !emails) return;
 
             const lat = cleanCoord(endLat);
@@ -406,7 +402,6 @@
             sosPanel.style.display = "block";
             sosPanel.textContent = "📨 Sending SOS alerts...";
 
-            // Split emails by comma and filter empty strings
             const emailList = emails.split(",").map(e => e.trim()).filter(e => e.length > 0);
 
             let successCount = 0;
@@ -427,7 +422,7 @@
             sosPanel.textContent = `✅ SOS sent to ${successCount} contact${successCount !== 1 ? 's' : ''}!`;
             setTimeout(() => { sosPanel.style.display = "none"; }, 5000);
 
-            // Also drop a marker at the SOS location
+            // Drop a marker at the SOS location
             L.marker([lat, lng])
                 .addTo(map)
                 .bindPopup(`<b>🚨 SOS Location</b><br>${sender || "User"} needs help here!`)
@@ -610,8 +605,7 @@
             const endLat = params.get("endLat");
             const endLng = params.get("endLng");
 
-            // SOS mode — contact opens link to see sender's location
-            // Just show the pin, no routing needed from HTML side
+            // SOS mode — just show the pin, no routing
             if (endLat && endLng && !startLat && !startLng && !startAddress && !endAddress) return;
 
             const hasStart = (startLat && startLng) || startAddress;
@@ -650,7 +644,7 @@
         }
 
         /* ================================================================
-           ON LOAD — run SOS emails first, then routing
+           ON LOAD
         ================================================================ */
         window.addEventListener("load", async () => {
             await sendSOSEmails();
