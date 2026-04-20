@@ -5,9 +5,8 @@
     <title>Safety Map</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 
     <style>
         body {
@@ -82,7 +81,7 @@
             align-items: flex-start;
             gap: 8px;
             padding: 6px 14px;
-            border-bottom: 1px solid #1e293b;
+            border-bottom: 1px solid #263147;
         }
 
         .step-num {
@@ -109,6 +108,23 @@
             font-size: 11px;
             white-space: nowrap;
         }
+
+        /* ---- SOS PANEL ---- */
+        #sos-panel {
+            display: none;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #7c2d12;
+            color: #fed7aa;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+        }
     </style>
 </head>
 
@@ -116,15 +132,22 @@
 
     <div id="map"></div>
     <div id="route-panel"></div>
+    <div id="sos-panel"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 
-
-    // HAZARDS
     <script>
-        // --- FIREBASE CONFIG ---
+
+        /* ================================================================
+           EMAILJS INIT
+        ================================================================ */
+        emailjs.init("8QRep0LfFVMf9bZQs");
+
+        /* ================================================================
+           FIREBASE INIT
+        ================================================================ */
         const firebaseConfig = {
             apiKey: "AIzaSyBJafyz-DNmqKZOP70LnmwTvdrGtBxxhag",
             authDomain: "safestreet-25fbf.firebaseapp.com",
@@ -137,14 +160,24 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // --- INITIALIZE MAP ---
-        const map = L.map('map', { zoomControl: true }).setView([20, 0], 2);
+        /* ================================================================
+           MAP INIT
+           Always starts at world view [20, 0] zoom 2.
+           Only zooms in when routing params are present.
+        ================================================================ */
+        const map = L.map('map', {
+            zoomControl: true,
+            autoPanOnFocus: false
+        }).setView([20, 0], 2);
+
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors',
             maxZoom: 19
         }).addTo(map);
 
-        // --- ICONS ---
+        /* ================================================================
+           ICONS
+        ================================================================ */
         var hazardIcon = L.icon({
             iconUrl: 'https://i.postimg.cc/nz4XMXSv/output-onlinepngtools.png',
             iconSize: [32, 32],
@@ -159,122 +192,59 @@
             popupAnchor: [0, -32]
         });
 
-        // --- STATIC HAZARDS ---
+        /* ================================================================
+           STATIC HAZARDS
+        ================================================================ */
         var staticHazards = [
-            [40.7128, -74.0060],
-            [34.0522, -118.2437],
-            [51.5074, -0.1278],
-            [48.8566, 2.3522],
-            [35.6895, 139.6917],
-            [19.0760, 72.8777],
-            [28.6139, 77.2090],
-            [-33.8688, 151.2093],
-            [1.3521, 103.8198],
-            [52.5200, 13.4050],
-
-            [41.9028, 12.4964],
-            [55.7558, 37.6173],
-            [-23.5505, -46.6333],
-            [30.0444, 31.2357],
-            [6.5244, 3.3792],
-            [37.7749, -122.4194],
-            [45.5017, -73.5673],
-            [49.2827, -123.1207],
-            [25.2048, 55.2708],
-            [31.2304, 121.4737],
-
-            [39.9042, 116.4074],
-            [22.3193, 114.1694],
-            [13.7563, 100.5018],
-            [14.5995, 120.9842],
-            [37.5665, 126.9780],
-            [35.6762, 139.6503],
-            [55.9533, -3.1883],
-            [59.3293, 18.0686],
-            [60.1699, 24.9384],
-            [41.0082, 28.9784],
-
-            [50.1109, 8.6821],
-            [48.1351, 11.5820],
-            [52.3676, 4.9041],
-            [50.9375, 6.9603],
-            [53.3498, -6.2603],
-            [43.6532, -79.3832],
-            [45.4215, -75.6972],
-            [53.5461, -113.4938],
-            [49.8951, -97.1384],
-            [44.6488, -63.5752],
-
-            [33.4484, -112.0740],
-            [32.7157, -117.1611],
-            [29.7604, -95.3698],
-            [39.7392, -104.9903],
-            [42.3601, -71.0589],
-            [38.9072, -77.0369],
-            [25.7617, -80.1918],
-            [36.1627, -86.7816],
-            [33.7490, -84.3880],
-            [47.6062, -122.3321],
-
-            [19.4326, -99.1332],
-            [4.7110, -74.0721],
-            [-12.0464, -77.0428],
-            [-34.6037, -58.3816],
-            [-22.9068, -43.1729],
-            [-33.4489, -70.6693],
-            [6.2442, -75.5812],
-            [10.4806, -66.9036],
-            [14.6349, -90.5069],
-            [9.9281, -84.0907],
-
-            [0.3476, 32.5825],
-            [-1.2921, 36.8219],
-            [5.6037, -0.1870],
-            [7.9465, -1.0232],
-            [9.0579, 7.4951],
-            [24.7136, 46.6753],
-            [21.3891, 39.8579],
-            [33.6844, 73.0479],
-            [24.8607, 67.0011],
-            [27.7172, 85.3240],
-
-            [13.0827, 80.2707],
-            [17.3850, 78.4867],
-            [12.9716, 77.5946],
-            [22.5726, 88.3639],
-            [23.8103, 90.4125],
-            [3.1390, 101.6869],
-            [-6.2088, 106.8456],
-            [14.5547, 121.0244],
-            [21.0278, 105.8342],
-            [35.1796, 129.0756],
-
-            [-37.8136, 144.9631],
-            [-27.4698, 153.0251],
-            [-31.9505, 115.8605],
-            [-34.9285, 138.6007],
-            [-36.8485, 174.7633],
-            [-41.2865, 174.7762],
-            [-45.8788, 170.5028],
-            [-12.4634, 130.8456],
-            [-16.9186, 145.7781],
-            [-20.9176, 142.7028],
+            [40.7128, -74.0060], [34.0522, -118.2437], [51.5074, -0.1278],
+            [48.8566, 2.3522], [35.6895, 139.6917], [19.0760, 72.8777],
+            [28.6139, 77.2090], [-33.8688, 151.2093], [1.3521, 103.8198],
+            [52.5200, 13.4050], [41.9028, 12.4964], [55.7558, 37.6173],
+            [-23.5505, -46.6333], [30.0444, 31.2357], [6.5244, 3.3792],
+            [37.7749, -122.4194], [45.5017, -73.5673], [49.2827, -123.1207],
+            [25.2048, 55.2708], [31.2304, 121.4737], [39.9042, 116.4074],
+            [22.3193, 114.1694], [13.7563, 100.5018], [14.5995, 120.9842],
+            [37.5665, 126.9780], [35.6762, 139.6503], [55.9533, -3.1883],
+            [59.3293, 18.0686], [60.1699, 24.9384], [41.0082, 28.9784],
+            [50.1109, 8.6821], [48.1351, 11.5820], [52.3676, 4.9041],
+            [50.9375, 6.9603], [53.3498, -6.2603], [43.6532, -79.3832],
+            [45.4215, -75.6972], [53.5461, -113.4938], [49.8951, -97.1384],
+            [44.6488, -63.5752], [33.4484, -112.0740], [32.7157, -117.1611],
+            [29.7604, -95.3698], [39.7392, -104.9903], [42.3601, -71.0589],
+            [38.9072, -77.0369], [25.7617, -80.1918], [36.1627, -86.7816],
+            [33.7490, -84.3880], [47.6062, -122.3321], [19.4326, -99.1332],
+            [4.7110, -74.0721], [-12.0464, -77.0428], [-34.6037, -58.3816],
+            [-22.9068, -43.1729], [-33.4489, -70.6693], [6.2442, -75.5812],
+            [10.4806, -66.9036], [14.6349, -90.5069], [9.9281, -84.0907],
+            [0.3476, 32.5825], [-1.2921, 36.8219], [5.6037, -0.1870],
+            [7.9465, -1.0232], [9.0579, 7.4951], [24.7136, 46.6753],
+            [21.3891, 39.8579], [33.6844, 73.0479], [24.8607, 67.0011],
+            [27.7172, 85.3240], [13.0827, 80.2707], [17.3850, 78.4867],
+            [12.9716, 77.5946], [22.5726, 88.3639], [23.8103, 90.4125],
+            [3.1390, 101.6869], [-6.2088, 106.8456], [14.5547, 121.0244],
+            [21.0278, 105.8342], [35.1796, 129.0756], [-37.8136, 144.9631],
+            [-27.4698, 153.0251], [-31.9505, 115.8605], [-34.9285, 138.6007],
+            [-36.8485, 174.7633], [-41.2865, 174.7762], [-45.8788, 170.5028],
+            [-12.4634, 130.8456], [-16.9186, 145.7781], [-20.9176, 142.7028]
         ];
 
         staticHazards.forEach(function (h) {
-            L.marker(h, { icon: hazardIcon }).addTo(map).bindPopup("Official Hazard zone");
+            L.marker(h, { icon: hazardIcon })
+                .addTo(map)
+                .bindPopup("Official Hazard zone");
         });
 
-
-        // --- FIREBASE & MAP INIT (keep your existing code above this) ---
-
-        /* ---- SENTINEL VALUES ---- */
+        /* ================================================================
+           SHARED CONSTANTS
+        ================================================================ */
+        const API_KEY = "pk.8c0002d5e4d865cd206c0f2cf1bcbdaa";
         const REVERSE_SENTINEL = "Reverse it";
         const FORWARD_SENTINEL_LAT = 0;
         const FORWARD_SENTINEL_LNG = 0;
-        const API_KEY = "pk.8c0002d5e4d865cd206c0f2cf1bcbdaa";
 
-        /* ---- UTILS ---- */
+        /* ================================================================
+           UTILS
+        ================================================================ */
         function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
         }
@@ -287,7 +257,6 @@
                 return isNaN(lat) || isNaN(lng) ? null : [lat, lng];
             }
             if (typeof location === "object") {
-                // Firestore GeoPoint
                 if (typeof location._lat === "number" && typeof location._long === "number")
                     return [location._lat, location._long];
                 if (typeof location.lat === "number" && typeof location.lng === "number")
@@ -296,8 +265,14 @@
             return null;
         }
 
+        function cleanCoord(val) {
+            return parseFloat(String(val).replace(/["""'']/g, '').trim());
+        }
+
+        /* ================================================================
+           HAZARD GEOCODING
+        ================================================================ */
         function needsReverseGeocode(data) {
-            // Has real coordinates + address is the sentinel = came from "use current location"
             const loc = normalizeLocation(data.location);
             if (!loc) return false;
             const isRealCoord = !(loc[0] === FORWARD_SENTINEL_LAT && loc[1] === FORWARD_SENTINEL_LNG);
@@ -306,7 +281,6 @@
         }
 
         function needsForwardGeocode(data) {
-            // Has a real address string + location is the sentinel [0, 0] = came from manual entry
             const address = data.address?.trim();
             if (!address || address === REVERSE_SENTINEL) return false;
             const loc = normalizeLocation(data.location);
@@ -314,90 +288,74 @@
             return locationIsSentinel;
         }
 
-        /* ---- REVERSE GEOCODE: coords → address ---- */
         async function reverseGeocode(docId, lat, lng) {
             try {
                 const res = await fetch(
                     `https://us1.locationiq.com/v1/reverse.php?key=${API_KEY}&lat=${lat}&lon=${lng}&format=json`
                 );
                 const data = await res.json();
-                if (!data?.display_name) {
-                    console.warn("No display_name in reverse geocode response", data);
-                    return;
-                }
-                // ONLY update the address field — never touch location
-                await db.collection("hazards").doc(docId).update({
-                    address: data.display_name
-                });
+                if (!data?.display_name) return;
+                await db.collection("hazards").doc(docId).update({ address: data.display_name });
                 console.log(`[${docId}] Reverse geocoded → ${data.display_name}`);
             } catch (err) {
                 console.error(`[${docId}] Reverse geocode failed:`, err);
             }
         }
 
-        /* ---- FORWARD GEOCODE: address → coords ---- */
         async function forwardGeocode(docId, address) {
             try {
                 const res = await fetch(
                     `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(address)}&format=json`
                 );
                 const data = await res.json();
-                if (!Array.isArray(data) || data.length === 0) {
-                    console.warn(`[${docId}] No results for address: ${address}`);
-                    return;
-                }
+                if (!Array.isArray(data) || data.length === 0) return;
                 const lat = Number(data[0].lat);
                 const lng = Number(data[0].lon);
-                if (isNaN(lat) || isNaN(lng)) {
-                    console.warn(`[${docId}] Invalid coordinates in response`);
-                    return;
-                }
-                // ONLY update the location field — never touch address
-                await db.collection("hazards").doc(docId).update({
-                    location: [lat, lng]
-                });
+                if (isNaN(lat) || isNaN(lng)) return;
+                await db.collection("hazards").doc(docId).update({ location: [lat, lng] });
                 console.log(`[${docId}] Forward geocoded → [${lat}, ${lng}]`);
             } catch (err) {
                 console.error(`[${docId}] Forward geocode failed:`, err);
             }
         }
 
-        /* ---- PROCESS QUEUE ---- */
-        let queueRunning = false;
-
         async function processQueue(docs) {
             for (const { id, data } of docs) {
                 if (needsReverseGeocode(data)) {
                     const [lat, lng] = normalizeLocation(data.location);
-                    await sleep(800);
+                    await sleep(1500);
                     await reverseGeocode(id, lat, lng);
                 } else if (needsForwardGeocode(data)) {
-                    await sleep(800);
+                    await sleep(1500);
                     await forwardGeocode(id, data.address.trim());
                 }
             }
         }
 
-        /* ---- FIRESTORE LISTENER ---- */
+        /* ================================================================
+           FIRESTORE LISTENER
+        ================================================================ */
         let hazardMarkers = {};
+        let queueRunning = false;
 
         db.collection("hazards").onSnapshot(async (snapshot) => {
             const docs = [];
             snapshot.forEach(doc => docs.push({ id: doc.id, data: doc.data() }));
 
-            // Rebuild markers
             Object.values(hazardMarkers).forEach(m => map.removeLayer(m));
             hazardMarkers = {};
 
             for (const { id, data } of docs) {
                 const loc = normalizeLocation(data.location);
                 if (!loc) continue;
-                // Don't render the sentinel [0,0] placeholder
                 if (loc[0] === 0 && loc[1] === 0) continue;
 
                 hazardMarkers[id] = L.marker(loc, { icon: userHazardIcon })
                     .addTo(map)
-                    .bindPopup(`<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL ? '<br>' + data.address : ''}`);
+                    .bindPopup(
+                        `<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL
+                            ? '<br>' + data.address : ''}`
+                    );
             }
 
             if (queueRunning) return;
@@ -408,23 +366,65 @@
                 queueRunning = false;
             }
         });
-    </script>
 
-    //ROUTING
-    <!-- ROUTING SCRIPT — replace your existing //ROUTING script tag with this -->
-    <script>
-        /* ============================================================
-        SAFE WALK ROUTING
-        Reads URL params on load:
-            ?startLat=&startLng=        ← GPS mode
-            ?startAddress=              ← manual address mode
-            ?endAddress=                ← always required
-        ============================================================ */
+        /* ================================================================
+           SOS EMAIL HANDLER
+           Triggered when URL has ?endLat=&endLng=&sender=&emails=
+           Sends an email to each comma-separated email in the emails param
+        ================================================================ */
+        async function sendSOSEmails() {
+            const params = new URLSearchParams(window.location.search);
+            const endLat = params.get("endLat");
+            const endLng = params.get("endLng");
+            const sender = params.get("sender");
+            const emails = params.get("emails");
 
-        const ROUTING_API_KEY = "pk.8c0002d5e4d865cd206c0f2cf1bcbdaa";
-        const HAZARD_RADIUS_M = 350; // ~350m buffer around each hazard
+            // Only run if this is an SOS link (has emails param)
+            if (!endLat || !endLng || !emails) return;
 
-        // --- Haversine distance in meters between two [lat,lng] points ---
+            const lat = cleanCoord(endLat);
+            const lng = cleanCoord(endLng);
+            const locationLink = `https://hasita-choppa.github.io/MapSS/?endLat=${lat}&endLng=${lng}`;
+
+            const sosPanel = document.getElementById("sos-panel");
+            sosPanel.style.display = "block";
+            sosPanel.textContent = "📨 Sending SOS alerts...";
+
+            // Split emails by comma and filter empty strings
+            const emailList = emails.split(",").map(e => e.trim()).filter(e => e.length > 0);
+
+            let successCount = 0;
+            for (const email of emailList) {
+                try {
+                    await emailjs.send("service_xydhguw", "template_8cnehe7", {
+                        sender: sender || "Someone",
+                        locationlink: locationLink,
+                        to_email: email
+                    });
+                    successCount++;
+                    console.log(`SOS email sent to ${email}`);
+                } catch (err) {
+                    console.error(`Failed to send SOS email to ${email}:`, err);
+                }
+            }
+
+            sosPanel.textContent = `✅ SOS sent to ${successCount} contact${successCount !== 1 ? 's' : ''}!`;
+            setTimeout(() => { sosPanel.style.display = "none"; }, 5000);
+
+            // Also drop a marker at the SOS location
+            L.marker([lat, lng])
+                .addTo(map)
+                .bindPopup(`<b>🚨 SOS Location</b><br>${sender || "User"} needs help here!`)
+                .openPopup();
+
+            map.setView([lat, lng], 15);
+        }
+
+        /* ================================================================
+           ROUTING
+        ================================================================ */
+        const HAZARD_RADIUS_M = 350;
+
         function distanceMeters([lat1, lng1], [lat2, lng2]) {
             const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -437,35 +437,16 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         }
 
-        // --- Collect all hazard coords (static + live Firestore) ---
         function getAllHazardCoords() {
             const coords = [];
-
-            // Static hazards (already defined above in the HAZARDS script)
             staticHazards.forEach(h => coords.push(h));
-
-            // Live user-reported hazards (from the hazardMarkers already on map)
             Object.values(hazardMarkers).forEach(marker => {
                 const ll = marker.getLatLng();
                 coords.push([ll.lat, ll.lng]);
             });
-
             return coords;
         }
 
-        // --- Check if a decoded route geometry passes too close to any hazard ---
-        function routePassesNearHazard(coordsArray, hazards) {
-            for (const point of coordsArray) {
-                for (const hazard of hazards) {
-                    if (distanceMeters(point, hazard) < HAZARD_RADIUS_M) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        // --- Decode LocationIQ/OSRM polyline (encoded polyline6 format) ---
         function decodePolyline(encoded, precision = 6) {
             const factor = Math.pow(10, precision);
             const coords = [];
@@ -482,33 +463,41 @@
             return coords;
         }
 
-        // --- Geocode an address string → {lat, lng} ---
+        function routePassesNearHazard(coordsArray, hazards) {
+            for (const point of coordsArray) {
+                for (const hazard of hazards) {
+                    if (distanceMeters(point, hazard) < HAZARD_RADIUS_M) return true;
+                }
+            }
+            return false;
+        }
+
         async function geocodeAddress(address) {
             const res = await fetch(
-                `https://us1.locationiq.com/v1/search.php?key=${ROUTING_API_KEY}&q=${encodeURIComponent(address)}&format=json`
+                `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(address)}&format=json`
             );
             const data = await res.json();
-            if (!Array.isArray(data) || data.length === 0) throw new Error("No geocode result for: " + address);
+            if (!Array.isArray(data) || data.length === 0)
+                throw new Error("No geocode result for: " + address);
             return { lat: Number(data[0].lat), lng: Number(data[0].lon) };
         }
 
-        // --- Fetch a route from LocationIQ Directions API ---
-        // waypoints: array of {lat, lng} — start, optional intermediates, end
         async function fetchRoute(waypoints) {
-            const coords = waypoints.map(p => `${parseFloat(p.lng)},${parseFloat(p.lat)}`).join(";");
-            const url = `https://us1.locationiq.com/v1/directions/driving/${coords}?key=${ROUTING_API_KEY}&steps=true&alternatives=true&geometries=polyline6&overview=full`;
+            const coords = waypoints.map(p => {
+                const lat = parseFloat(String(p.lat).replace(/["""'']/g, '').trim());
+                const lng = parseFloat(String(p.lng).replace(/["""'']/g, '').trim());
+                return `${lng},${lat}`;
+            }).join(";");
+            const url = `https://us1.locationiq.com/v1/directions/driving/${coords}?key=${API_KEY}&steps=true&alternatives=true&geometries=polyline6&overview=full`;
             const res = await fetch(url);
             const data = await res.json();
             if (!data.routes || data.routes.length === 0) throw new Error("No routes returned");
-            return data.routes; // array of route alternatives
+            return data.routes;
         }
 
-        // --- Build waypoints that detour around hazards ---
-        // Strategy: try alternatives first, then inject a midpoint detour if all pass near hazards
         async function getSafeRoute(start, end, hazards) {
             const routes = await fetchRoute([start, end]);
 
-            // 1. Try each alternative — return the first that avoids hazards
             for (const route of routes) {
                 const coords = decodePolyline(route.geometry);
                 if (!routePassesNearHazard(coords, hazards)) {
@@ -516,14 +505,11 @@
                 }
             }
 
-            // 2. All alternatives pass near hazards — inject a perpendicular midpoint detour
             const midLat = (start.lat + end.lat) / 2;
             const midLng = (start.lng + end.lng) / 2;
-
-            // Offset perpendicularly (~0.005 degrees ≈ 500m)
             const dLat = end.lat - start.lat;
             const dLng = end.lng - start.lng;
-            const len = Math.sqrt(dLat * dLat + dLng * dLng);
+            const len = Math.sqrt(dLat * dLat + dLng * dLng) || 1;
             const perpLat = midLat + (dLng / len) * 0.005;
             const perpLng = midLng - (dLat / len) * 0.005;
 
@@ -533,13 +519,11 @@
                 const coords = decodePolyline(best.geometry);
                 return { route: best, coords, isDetoured: true };
             } catch {
-                // Fallback: return the least-bad original route
                 const fallback = routes[0];
                 return { route: fallback, coords: decodePolyline(fallback.geometry), isDetoured: false };
             }
         }
 
-        // --- Draw the route on the map ---
         let routeLayer = null;
         let routeMarkers = [];
 
@@ -554,33 +538,27 @@
         function drawRoute(coords, route, start, end, isDetoured) {
             clearRoute();
 
-            // Draw polyline
             routeLayer = L.polyline(coords, {
                 color: isDetoured ? "#f97316" : "#3b82f6",
                 weight: 5,
                 opacity: 0.85
             }).addTo(map);
 
-            // Start & end markers
             const startMarker = L.marker([start.lat, start.lng])
                 .addTo(map)
-                .bindPopup("<b>Start</b>")
-                .openPopup();
+                .bindPopup("<b>Start</b>");
             const endMarker = L.marker([end.lat, end.lng])
                 .addTo(map)
                 .bindPopup("<b>Destination</b>");
             routeMarkers.push(startMarker, endMarker);
 
-            // Fit map to route with padding
             map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
 
-            // Build turn-by-turn panel
             const panel = document.getElementById("route-panel");
             if (!panel) return;
 
             const legs = route.legs || [];
             const steps = legs.flatMap(leg => leg.steps || []);
-
             const distKm = (route.distance / 1000).toFixed(1);
             const durMin = Math.round(route.duration / 60);
 
@@ -599,7 +577,7 @@
                         <div class="route-step">
                             <span class="step-num">${i + 1}</span>
                             <span class="step-text">${step.maneuver?.instruction || step.name || "Continue"}</span>
-                            <span class="step-dist">${(step.distance).toFixed(0)}m</span>
+                            <span class="step-dist">${Math.round(step.distance)}m</span>
                         </div>
                     `).join("")}
                 </div>
@@ -607,16 +585,19 @@
             panel.style.display = "block";
         }
 
-        // --- Main entry point: reads URL params and kicks off routing ---
         async function initRouting() {
             const params = new URLSearchParams(window.location.search);
-
             const startLat = params.get("startLat");
             const startLng = params.get("startLng");
             const startAddress = params.get("startAddress");
             const endAddress = params.get("endAddress");
+            const endLat = params.get("endLat");
+            const endLng = params.get("endLng");
 
-            // Only run routing if routing params are present
+            // SOS mode — contact opens link to see sender's location
+            // Just show the pin, no routing needed from HTML side
+            if (endLat && endLng && !startLat && !startLng && !startAddress && !endAddress) return;
+
             const hasStart = (startLat && startLng) || startAddress;
             const hasEnd = !!endAddress;
             if (!hasStart || !hasEnd) return;
@@ -628,30 +609,22 @@
             }
 
             try {
-                // Resolve start
                 let start;
                 if (startLat && startLng) {
-                    const lat = parseFloat(startLat.replace(/"/g, '').trim());
-                    const lng = parseFloat(startLng.replace(/"/g, '').trim());
-                    if (isNaN(lat) || isNaN(lng)) {
-                        throw new Error("Invalid coordinates: " + startLat + ", " + startLng);
-                    }
+                    const lat = cleanCoord(startLat);
+                    const lng = cleanCoord(startLng);
+                    if (isNaN(lat) || isNaN(lng)) throw new Error("Invalid coordinates: " + startLat + ", " + startLng);
                     start = { lat, lng };
-                }
-                else {
+                } else {
                     start = await geocodeAddress(startAddress);
                 }
 
-                // Resolve end
                 const end = await geocodeAddress(endAddress);
 
-                // Get hazards (wait a moment for Firestore markers to load)
                 await new Promise(r => setTimeout(r, 1200));
                 const hazards = getAllHazardCoords();
 
-                // Get safe route
                 const { route, coords, isDetoured } = await getSafeRoute(start, end, hazards);
-
                 drawRoute(coords, route, start, end, isDetoured);
 
             } catch (err) {
@@ -660,9 +633,15 @@
             }
         }
 
-        // Wait for Firestore listener to attach, then run routing
-        window.addEventListener("load", () => setTimeout(initRouting, 500));
-    </script>
-</body>
+        /* ================================================================
+           ON LOAD — run SOS emails first, then routing
+        ================================================================ */
+        window.addEventListener("load", async () => {
+            await sendSOSEmails();
+            setTimeout(initRouting, 600);
+        });
 
+    </script>
+
+</body>
 </html>
