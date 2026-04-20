@@ -139,14 +139,14 @@
 
     <script>
 
-        /* ================================================================
+        /* ==========
            EMAILJS INIT
-        ================================================================ */
+        ========== */
         emailjs.init("8QRep0LfFVMf9bZQs");
 
-        /* ================================================================
+        /* ===========
            FIREBASE INIT
-        ================================================================ */
+        ========== */
         const firebaseConfig = {
             apiKey: "AIzaSyBJafyz-DNmqKZOP70LnmwTvdrGtBxxhag",
             authDomain: "safestreet-25fbf.firebaseapp.com",
@@ -159,9 +159,9 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        /* ================================================================
+        /* =============
            MAP INIT
-        ================================================================ */
+        ============ */
         const map = L.map('map', {
             zoomControl: true,
             autoPanOnFocus: false
@@ -172,9 +172,9 @@
             maxZoom: 19
         }).addTo(map);
 
-        /* ================================================================
+        /* ===========
            ICONS
-        ================================================================ */
+        ============ */
         var hazardIcon = L.icon({
             iconUrl: 'https://i.postimg.cc/nz4XMXSv/output-onlinepngtools.png',
             iconSize: [32, 32],
@@ -189,9 +189,9 @@
             popupAnchor: [0, -32]
         });
 
-        /* ================================================================
+        /* ============
            STATIC HAZARDS
-        ================================================================ */
+        =========== */
         var staticHazards = [
             [40.7128, -74.0060], [34.0522, -118.2437], [51.5074, -0.1278],
             [48.8566, 2.3522], [35.6895, 139.6917], [19.0760, 72.8777],
@@ -231,17 +231,17 @@
                 .bindPopup("Official Hazard zone");
         });
 
-        /* ================================================================
+        /* =========
            SHARED CONSTANTS
-        ================================================================ */
+        ========== */
         const API_KEY = "pk.8c0002d5e4d865cd206c0f2cf1bcbdaa";
         const REVERSE_SENTINEL = "Reverse it";
         const FORWARD_SENTINEL_LAT = 0;
         const FORWARD_SENTINEL_LNG = 0;
 
-        /* ================================================================
+        /* =========
            UTILS
-        ================================================================ */
+        ========= */
         function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
         }
@@ -266,9 +266,9 @@
             return parseFloat(String(val).replace(/["""'']/g, '').trim());
         }
 
-        /* ================================================================
+        /* ==========
            HAZARD GEOCODING
-        ================================================================ */
+        ========== */
         function needsReverseGeocode(data) {
             const loc = normalizeLocation(data.location);
             if (!loc) return false;
@@ -329,11 +329,11 @@
             }
         }
 
-        /* ================================================================
+        /* ==============
            FIRESTORE LISTENER
            Uses docChanges() so markers never flash —
            only adds/removes markers when documents actually change.
-        ================================================================ */
+        ================ */
         let hazardMarkers = {};
         let queueRunning = false;
 
@@ -380,11 +380,11 @@
             }
         });
 
-        /* ================================================================
+        /* ============
            SOS EMAIL HANDLER
            Fires when URL has ?endLat=&endLng=&sender=&emails=
            Sends EmailJS email to each comma-separated address.
-        ================================================================ */
+        ============= */
         async function sendSOSEmails() {
             const params = new URLSearchParams(window.location.search);
             const endLat = params.get("endLat");
@@ -400,7 +400,7 @@
 
             const sosPanel = document.getElementById("sos-panel");
             sosPanel.style.display = "block";
-            sosPanel.textContent = "📨 Sending SOS alerts...";
+            sosPanel.textContent = " Sending SOS alerts...";
 
             const emailList = emails.split(",").map(e => e.trim()).filter(e => e.length > 0);
 
@@ -419,21 +419,21 @@
                 }
             }
 
-            sosPanel.textContent = `✅ SOS sent to ${successCount} contact${successCount !== 1 ? 's' : ''}!`;
+            sosPanel.textContent = `SOS sent to ${successCount} contact${successCount !== 1 ? 's' : ''}!`;
             setTimeout(() => { sosPanel.style.display = "none"; }, 5000);
 
             // Drop a marker at the SOS location
             L.marker([lat, lng])
                 .addTo(map)
-                .bindPopup(`<b>🚨 SOS Location</b><br>${sender || "User"} needs help here!`)
+                .bindPopup(`<b>SOS Location</b><br>${sender || "User"} needs help here!`)
                 .openPopup();
 
             map.setView([lat, lng], 15);
         }
 
-        /* ================================================================
+        /* ===================
            ROUTING
-        ================================================================ */
+        ============== */
         const HAZARD_RADIUS_M = 350;
 
         function distanceMeters([lat1, lng1], [lat2, lng2]) {
@@ -615,7 +615,7 @@
             const panel = document.getElementById("route-panel");
             if (panel) {
                 panel.style.display = "block";
-                panel.innerHTML = `<div class="route-loading">🔍 Finding safest route...</div>`;
+                panel.innerHTML = `<div class="route-loading"> Finding safest route...</div>`;
             }
 
             try {
@@ -639,13 +639,13 @@
 
             } catch (err) {
                 console.error("Routing failed:", err);
-                if (panel) panel.innerHTML = `<div class="route-error">❌ Could not find a route. Check the addresses and try again.</div>`;
+                if (panel) panel.innerHTML = `<div class="route-error"> Could not find a route. Check the addresses and try again.</div>`;
             }
         }
 
-        /* ================================================================
+        /* =============
            ON LOAD
-        ================================================================ */
+        ============ */
         window.addEventListener("load", async () => {
             await sendSOSEmails();
             setTimeout(initRouting, 600);
