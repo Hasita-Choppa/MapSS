@@ -341,23 +341,39 @@
         db.collection("hazards").onSnapshot(async (snapshot) => {
             const docs = [];
             snapshot.forEach(doc => docs.push({ id: doc.id, data: doc.data() }));
-
-            Object.values(hazardMarkers).forEach(m => map.removeLayer(m));
-            hazardMarkers = {};
-
+        
+            // Only process documents that actually changed — don't clear all markers
+            snapshot.docChanges().forEach(change => {
+                if (change.type === "removed") {
+                    if (hazardMarkers[change.doc.id]) {
+                        map.removeLayer(hazardMarkers[change.doc.id]);
+                        delete hazardMarkers[change.doc.id];
+                    }
+                }
+            });
+        
             for (const { id, data } of docs) {
                 const loc = normalizeLocation(data.location);
                 if (!loc) continue;
                 if (loc[0] === 0 && loc[1] === 0) continue;
-
-                hazardMarkers[id] = L.marker(loc, { icon: userHazardIcon })
-                    .addTo(map)
-                    .bindPopup(
+        
+                // Only add marker if it doesn't already exist on the map
+                if (!hazardMarkers[id]) {
+                    hazardMarkers[id] = L.marker(loc, { icon: userHazardIcon })
+                        .addTo(map)
+                        .bindPopup(
+                            `<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL
+                                ? '<br>' + data.address : ''}`
+                        );
+                } else {
+                    // Update popup if address changed
+                    hazardMarkers[id].setPopupContent(
                         `<b>User Hazard</b>${data.address && data.address !== REVERSE_SENTINEL
                             ? '<br>' + data.address : ''}`
                     );
+                }
             }
-
+        
             if (queueRunning) return;
             queueRunning = true;
             try {
